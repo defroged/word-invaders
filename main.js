@@ -1,6 +1,7 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 let animationStartTime = null;
+
 const init = async () => {
     await preloadWordAudioFiles();
 
@@ -30,4 +31,7 @@ const startGame = () => {
     playWordAudio();
 };
 
-init();
+document.addEventListener("DOMContentLoaded", function() {
+    initializeGlobals();  // Initialize global variables and constants
+    init();               // Initialize the rest of the game
+});
