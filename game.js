@@ -1,3 +1,166 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const audioContext = new(window.AudioContext || window.webkitAudioContext)();
+
+const createAudioBuffer = async (url) => {
+	const response = await fetch(url);
+	const arrayBuffer = await response.arrayBuffer();
+	const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+	return audioBuffer;
+};
+const playAudioBuffer = (buffer) => {
+	const source = audioContext.createBufferSource();
+	source.buffer = buffer;
+	source.connect(audioContext.destination);
+	source.start();
+};
+// delete me
+let bulletAudioBuffer;
+let gameOverAudioBuffer;
+let animationStartTime = null;
+
+
+const loadBulletSound = async () => {
+	bulletAudioBuffer = await createAudioBuffer('audio/bullet.mp3');
+};
+
+loadBulletSound();
+
+const loadGameOverSound = async () => {
+	gameOverAudioBuffer = await createAudioBuffer('audio/game_over.mp3');
+};
+
+loadGameOverSound();
+
+const playTenPointsSound = async () => {
+	const tenPointsAudioBuffer = await createAudioBuffer('audio/ten_points.mp3');
+	setTimeout(() => {
+    	playAudioBuffer(tenPointsAudioBuffer);
+	}, 10); // Delay
+};
+const playUnderTenPointsSound = async () => {
+	const underTenPointsAudioBuffer = await createAudioBuffer('audio/under_ten_points.mp3');
+	setTimeout(() => {
+    	playAudioBuffer(underTenPointsAudioBuffer);
+	}, 10); // Delay
+};
+
+// Game objects
+const words = ['cat', 'dog', 'ball', 'girl', 'pig'];
+
+// Stage 2 game objects
+const stage2Words = ['and', 'this', 'the', 'like', 'see'];
+const stage2SpaceshipImage = new Image();
+stage2SpaceshipImage.src = 'images/invader2.png';
+
+
+// Word audio files
+const wordAudioFiles = {};
+
+// Images
+const spaceshipImage = new Image();
+spaceshipImage.src = 'images/invader1.png';
+
+const playerImage = new Image();
+playerImage.src = 'images/player.png';
+
+const gameOverImage = new Image();
+gameOverImage.src = 'images/game_over.png';
+
+const explosionImage = new Image();
+explosionImage.src = 'images/explosion.png';
+
+
+// Add the keys object
+const keys = {
+	ArrowLeft: false,
+	ArrowRight: false,
+	Space: false,
+};
+
+let spacebarPressed = false;
+
+let currentWord = '';
+const player = {
+	x: canvas.width / 2,
+	y: canvas.height - 150,
+	width: 100,
+	height: 20
+};
+let score = 0;
+
+const bullets = [];
+const wordInvaders = [];
+
+// Global scoreboard
+const globalScoreboard = {};
+
+// Player speed and movement
+const playerSpeed = 10;
+
+// Word audio
+let hitAudio, wrongAudio;
+
+
+// speed modifier
+let speedModifier = 0.5;
+let isGameOver = false;
+
+const playerName = "player";
+
+let invaderPadding = 10;
+
+const loadAudioFile = (src) => {
+	return new Promise((resolve) => {
+    	const audio = new Audio(src);
+    	audio.addEventListener('canplaythrough', () => {
+        	resolve(audio);
+    	});
+	});
+};
+
+const preloadWordAudioFiles = async () => {
+	const audioPromises = words.map((word) => {
+    	return loadAudioFile(`audio/${word}.mp3`).then((audio) => {
+        	wordAudioFiles[word] = audio;
+    	});
+	});
+
+	await Promise.all(audioPromises);
+};
+
+let remainingWords = [...words];
+
+const playWordAudio = () => {
+	// Refill the remainingWords array if it's empty
+	if (remainingWords.length === 0) {
+    	remainingWords = [...words];
+	}
+
+	// Pick a random word from the remainingWords array
+	const randomIndex = Math.floor(Math.random() * remainingWords.length);
+	currentWord = remainingWords[randomIndex];
+	remainingWords.splice(randomIndex, 1); // Remove the chosen word from the remainingWords array
+
+	const wordAudio = wordAudioFiles[currentWord];
+
+	if (!wordAudio) {
+    	console.error(`Audio not found for word: ${currentWord}`);
+    	return;
+	}
+
+	// Stop the current word audio before playing the new one
+	for (const audio of Object.values(wordAudioFiles)) {
+    	audio.pause();
+    	audio.currentTime = 0;
+	}
+
+	wordAudio.currentTime = 0;
+	wordAudio.play();
+};
+
+
 const shootBullet = () => {
 	const bulletX = player.x + player.width / 2 - 2.5;
 	const bulletY = player.y;
@@ -82,6 +245,7 @@ const gameLoop = (timestamp) => {
         	bullets.splice(index, 1);
     	}
 	});
+
 
 	// Collision detection
 	bullets.forEach((bullet, bulletIndex) => {
@@ -176,7 +340,6 @@ const gameLoop = (timestamp) => {
 
 	requestAnimationFrame(gameLoop);
 };
-
 
 document.addEventListener('keydown', (event) => {
 	if (event.code in keys) {
@@ -328,6 +491,92 @@ const shuffleArray = (array) => {
 	}
 };
 
+const spawnWordInvaders = () => {
+	const commonSpeed = 1.5;
+	const commonY = 60;
+
+	// Shuffle the words array
+	const shuffledWords = [...words];
+	shuffleArray(shuffledWords);
+
+	shuffledWords.forEach((word, index) => {
+    	const x = (canvas.width / (shuffledWords.length + 1)) * (index + 1);
+    	const y = commonY;
+    	const speed = commonSpeed;
+    	const text = word;
+    	const wordInvader = new WordInvader(x, y, speed, text);
+
+    	wordInvaders.push(wordInvader);
+	});
+};
+
+class WordInvader {
+	constructor(x, y, speed, text) {
+    	this.x = x;
+    	this.y = y;
+    	this.speed = speed;
+    	this.text = text;
+    	this.height = 20;
+    	this.invaderWidth = 100;
+    	this.invaderHeight = 50;
+    	this.isHit = false;
+    	this.fallingDelay = performance.now() + 1000; // 1000 ms delay
+    	this.explosionStartTime = null;
+	}
+}
+
+class Bullet {
+	constructor(x, y) {
+    	this.x = x;
+    	this.y = y;
+    	this.width = 5;
+    	this.height = 10;
+    	this.speed = 10;
+	}
+}
+
+const init = async () => {
+	await preloadWordAudioFiles();
+
+	// Load the hit and wrong audio files
+	hitAudioBuffer = await createAudioBuffer('audio/hit.mp3');
+
+	wrongAudioBuffer = await createAudioBuffer('audio/wrong.mp3');
+
+
+	// Spawn word invaders
+	spawnWordInvaders();
+
+	// Add a click event listener to the canvas to start the game
+	canvas.addEventListener('click', startGame, {
+    	once: true
+	});
+
+	// Show a "Click to start" message on the canvas
+	ctx.fillStyle = 'white';
+	ctx.font = '30px Orbitron';
+	ctx.fillText('Click to start', canvas.width / 2 - 80, canvas.height / 2);
+};
+
+const startGame = () => {
+	// Start the game loop
+	requestAnimationFrame(gameLoop);
+
+	// Play the first word audio
+	playWordAudio();
+
+};
+
+async function updateWordAudioFiles() {
+	const audioPromises = stage2Words.map((word) => {
+    	return loadAudioFile(`audio/${word}.mp3`).then((audio) => {
+        	wordAudioFiles[word] = audio;
+    	});
+	});
+
+	await Promise.all(audioPromises);
+}
+
 function startSecondStage() {
 	// Update the words array for the second stage
 	words.splice(0, words.length, ...stage2Words);
@@ -350,3 +599,5 @@ function startSecondStage() {
 	// Update the spaceship image for the second stage
 	spaceshipImage.src = stage2SpaceshipImage.src;
 }
+
+init();
